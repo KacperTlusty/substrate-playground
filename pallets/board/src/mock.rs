@@ -56,12 +56,14 @@ impl system::Config for Test {
 parameter_types! {
 	pub const MaxObserversPerUser: u32 = 10000;
 	pub const MaxPostsPerUser: u32 = 10000;
+	pub const MaxCommentsPerPost: u32 = 10000;
 }
 
 impl pallet_board::Config for Test {
 	type Event = Event;
 	type MaxObserversPerUser = MaxObserversPerUser;
 	type MaxPostsPerUser = MaxPostsPerUser;
+	type MaxCommentsPerPost = MaxCommentsPerPost;
 }
 
 // Build genesis storage according to the mock runtime.
