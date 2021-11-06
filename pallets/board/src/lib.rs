@@ -46,7 +46,7 @@ pub mod pallet {
 
 	#[pallet::pallet]
 	#[pallet::generate_store(pub(super) trait Store)]
-	pub struct Pallet<T>(_);
+	pub struct Pallet<T>(PhantomData<T>);
 
 	#[pallet::storage]
 	#[pallet::getter(fn all_posts)]
@@ -77,8 +77,10 @@ pub mod pallet {
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
-		/// User created new post on their board. [author, post_id]
+		/// User created new post on his board. [author, post_id]
 		PostCreated(T::AccountId, T::Hash),
+		/// User removed post from his board. [author, post_id]
+		PostRemoved(T::AccountId, T::Hash),
 		UserObserved(T::AccountId, T::AccountId),
 		UserUnobserved(T::AccountId, T::AccountId),
 	}
@@ -91,6 +93,8 @@ pub mod pallet {
 		ExceedMaxObserversPerUser,
 		/// User cannot unobserve user that he is not observing.
 		CannotUnobserveUserThatIsNotObserved,
+		/// User cannot remove post that does not exist.
+		CannotRemovePostThatDoesNotExist,
 	}
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -105,7 +109,7 @@ pub mod pallet {
 
 			log::info!("A new post have been created with ID: {:?} author {:?}.", post_id, sender);
 
-			Self::deposit_event(Event::PostCreated(sender, post_id));
+			Self::deposit_event(Event::<T>::PostCreated(sender, post_id));
 
 			Ok(())
 		}
@@ -144,6 +148,25 @@ pub mod pallet {
 			log::info!("An user {:?} unobserved user {:?}.", user_id, user_to_unobserve);
 
 			Self::deposit_event(Event::UserUnobserved(user_id, user_to_unobserve));
+
+			Ok(())
+		}
+
+		#[pallet::weight(100)]
+		pub fn remove_post(origin: OriginFor<T>, post_to_remove: T::Hash) -> DispatchResult {
+			let user_id = ensure_signed(origin)?;
+
+			<AllAuthorPosts<T>>::try_mutate(&user_id, |user_posts| {
+				if let Some(index) = user_posts.iter().position(|id| id == &post_to_remove) {
+					user_posts.swap_remove(index);
+					return Ok(());
+				}
+				Err(<Error<T>>::CannotRemovePostThatDoesNotExist)
+			})?;
+
+			log::info!("An user {:?} removed post {:?}.", user_id, post_to_remove);
+
+			Self::deposit_event(Event::PostRemoved(user_id, post_to_remove));
 
 			Ok(())
 		}
