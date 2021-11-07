@@ -35,6 +35,9 @@ pub mod pallet {
 
 		#[pallet::constant]
 		type MaxPostsPerUser: Get<u32>;
+
+		#[pallet::constant]
+		type MaxCommentsPerPost: Get<u32>;
 	}
 
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
@@ -42,6 +45,14 @@ pub mod pallet {
 	pub struct Post<T: Config> {
 		pub author: AccountOf<T>,
 		pub message: Vec<u8>,
+	}
+
+	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
+	#[scale_info(skip_type_params(T))]
+	pub struct Comment<T: Config> {
+		pub author: T::AccountId,
+		pub text: Vec<u8>,
+		pub post_id: T::Hash,
 	}
 
 	#[pallet::pallet]
@@ -72,6 +83,20 @@ pub mod pallet {
 		ValueQuery,
 	>;
 
+	#[pallet::storage]
+	#[pallet::getter(fn post_comments)]
+	pub(super) type PostComments<T: Config> = StorageMap<
+		_,
+		Twox64Concat,
+		T::Hash,
+		BoundedVec<T::Hash, T::MaxCommentsPerPost>,
+		ValueQuery,
+	>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn all_comments)]
+	pub(super) type AllComments<T: Config> = StorageMap<_, Twox64Concat, T::Hash, Comment<T>>;
+
 	// Pallets use events to inform users when important changes are made.
 	// https://substrate.dev/docs/en/knowledgebase/runtime/events
 	#[pallet::event]
@@ -83,23 +108,26 @@ pub mod pallet {
 		PostRemoved(T::AccountId, T::Hash),
 		UserObserved(T::AccountId, T::AccountId),
 		UserUnobserved(T::AccountId, T::AccountId),
+		PostCommented(T::AccountId, T::Hash),
 	}
 
 	// Errors inform users that something went wrong.
 	#[pallet::error]
 	pub enum Error<T> {
+		/// User cannot post more posts than allowed limit.
 		ExceedMaxPostsPerUser,
 		/// User cannot observe more users than allowed limit.
 		ExceedMaxObserversPerUser,
+		/// Post cannot have more comments than allowed limit.
+		ExceedMaxCommentsPerPost,
 		/// User cannot unobserve user that he is not observing.
 		CannotUnobserveUserThatIsNotObserved,
 		/// User cannot remove post that does not exist.
 		CannotRemovePostThatDoesNotExist,
+		/// User cannot comment post that does not exist.
+		CannotCommentPostThatDoesDoesNotExist,
 	}
 
-	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
-	// These functions materialize as "extrinsics", which are often compared to transactions.
-	// Dispatchable functions must be annotated with a weight and must return a DispatchResult.
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 		#[pallet::weight(100)]
@@ -110,6 +138,31 @@ pub mod pallet {
 			log::info!("A new post have been created with ID: {:?} author {:?}.", post_id, sender);
 
 			Self::deposit_event(Event::<T>::PostCreated(sender, post_id));
+
+			Ok(())
+		}
+
+		#[pallet::weight(100)]
+		pub fn comment_post(
+			origin: OriginFor<T>,
+			text: Vec<u8>,
+			post_to_comment: T::Hash,
+		) -> DispatchResult {
+			let sender = ensure_signed(origin)?;
+
+			ensure!(
+				<AllPosts<T>>::contains_key(post_to_comment),
+				<Error<T>>::CannotCommentPostThatDoesDoesNotExist
+			);
+
+			let comment_id = Self::mint_comment(&sender, text, post_to_comment)?;
+
+			log::info!(
+				"A new comment with ID: {:?} have been added to post {:?} by {:?}",
+				comment_id,
+				post_to_comment,
+				sender
+			);
 
 			Ok(())
 		}
@@ -183,6 +236,22 @@ pub mod pallet {
 				.map_err(|_| <Error<T>>::ExceedMaxPostsPerUser)?;
 
 			Ok(post_id)
+		}
+
+		pub fn mint_comment(
+			author: &T::AccountId,
+			text: Vec<u8>,
+			post_id: T::Hash,
+		) -> Result<T::Hash, Error<T>> {
+			let comment = Comment::<T> { text, author: author.clone(), post_id };
+
+			let comment_id = T::Hashing::hash_of(&comment);
+
+			<AllComments<T>>::insert(comment_id, comment);
+			<PostComments<T>>::try_mutate(post_id, |comments| comments.try_push(comment_id))
+				.map_err(|_| <Error<T>>::ExceedMaxCommentsPerPost)?;
+
+			Ok(comment_id)
 		}
 	}
 }

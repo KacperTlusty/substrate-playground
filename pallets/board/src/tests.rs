@@ -57,8 +57,6 @@ fn user_cannot_remove_post_that_does_not_exist() {
 #[test]
 fn user_can_remove_post_that_he_created() {
 	new_test_ext().execute_with(|| {
-		System::set_block_number(0);
-
 		let origin_account_id: u64 = 1;
 		assert_ok!(Board::create_post(
 			Origin::signed(origin_account_id),
@@ -73,4 +71,48 @@ fn user_can_remove_post_that_he_created() {
 
 		assert_eq!(Board::all_author_posts(origin_account_id).len(), 0);
 	});
+}
+
+#[test]
+fn user_can_comment_other_user_post() {
+	new_test_ext().execute_with(|| {
+		let author_post_account_id = 1;
+		let commenter_account_id = 2;
+
+		assert_ok!(Board::create_post(
+			Origin::signed(author_post_account_id),
+			"test message".as_bytes().to_vec()
+		));
+
+		let post_id =
+			Board::all_author_posts(author_post_account_id).clone().first().unwrap().clone();
+
+		assert_ok!(Board::comment_post(
+			Origin::signed(commenter_account_id),
+			"test comment".as_bytes().to_vec(),
+			post_id
+		));
+
+		let comment_id = Board::post_comments(post_id).clone().first().unwrap().clone();
+
+		assert_eq!(Board::post_comments(post_id), vec![comment_id]);
+		assert_eq!(Board::all_comments(comment_id).unwrap().post_id, post_id);
+	});
+}
+
+#[test]
+fn user_cannot_comment_post_that_does_not_exists() {
+	new_test_ext().execute_with(|| {
+		let commenter_account_id = 1;
+		let not_existing_post_id = 1;
+
+		assert_noop!(
+			Board::comment_post(
+				Origin::signed(commenter_account_id),
+				"test comment".as_bytes().to_vec(),
+				H256::from_low_u64_be(not_existing_post_id)
+			),
+			Error::<Test>::CannotCommentPostThatDoesDoesNotExist
+		);
+	})
 }

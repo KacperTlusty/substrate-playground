@@ -275,6 +275,7 @@ impl pallet_sudo::Config for Runtime {
 parameter_types! {
 	pub const MaxObserversPerUser: u32 = 10000;
 	pub const MaxPostsPerUser: u32 = 10000;
+	pub const MaxCommentsPerPost: u32 = 10000;
 }
 
 /// Configure the pallet-board in pallets/board.
@@ -282,6 +283,7 @@ impl pallet_board::Config for Runtime {
 	type Event = Event;
 	type MaxObserversPerUser = MaxObserversPerUser;
 	type MaxPostsPerUser = MaxPostsPerUser;
+	type MaxCommentsPerPost = MaxCommentsPerPost;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
